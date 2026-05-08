@@ -1,0 +1,10 @@
+django
+django-cors-headers
+djangorestframework
+pyjwt
+psycopg2-binary
+python-dotenv
+pytest
+pytest-django
+pytest-cov
+flake8

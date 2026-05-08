@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fdfaf1; /* Bright Parchment */
+  --foreground: #2d1a12; /* Deep Espresso */
+  --accent-gold: #b8860b; /* Antique Gold */
+  --accent-green: #1a2f23; /* Deep Library Green */
+  --card-bg: #f5f1e4; /* Aged Paper */
+  --border: rgba(45, 26, 18, 0.1);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent-gold: var(--accent-gold);
+  --color-accent-green: var(--accent-green);
+  --color-card-bg: var(--card-bg);
+  --font-serif: var(--font-crimson), "Georgia", serif;
+  --font-display: var(--font-playfair), "Crimson Text", serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f110f; /* Midnight Library */
+    --foreground: #e8e4d9; /* Faded Ink */
+    --accent-gold: #a67c00; /* Dark Brass */
+    --accent-green: #1e352f; /* Forest Shadow */
+    --card-bg: #161a16; /* Dark Greenish Wood */
+    --border: rgba(232, 228, 217, 0.05);
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-crimson), "Georgia", serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-playfair), "Crimson Text", serif;
+  letter-spacing: -0.02em;
+}
+
+/* Custom Scrollbar for Library Feel */
+::-webkit-scrollbar {
+  width: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--accent-gold);
+  border: 4px solid var(--background);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-green);
+}

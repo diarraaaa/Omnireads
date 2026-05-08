@@ -1,0 +1,29 @@
+# Python
+omni-backend/venv/
+omni-backend/__pycache__/
+omni-backend/*.py[cod]
+omni-backend/*.log
+omni-backend/.coverage
+omni-backend/.pytest_cache/
+omni-backend/htmlcov/
+omni-backend/.env
+omni-backend/db.sqlite3
+omni-backend/media/
+omni-backend/static/
+
+# Node
+omni-frontend/node_modules/
+omni-frontend/.next/
+omni-frontend/out/
+omni-frontend/build/
+omni-frontend/.env*
+omni-frontend/tsconfig.tsbuildinfo
+omni-frontend/npm-debug.log*
+omni-frontend/yarn-debug.log*
+omni-frontend/yarn-error.log*
+
+# Misc
+.DS_Store
+.vscode/
+*.swp
+*.bak
