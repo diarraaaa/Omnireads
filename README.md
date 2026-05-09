@@ -44,7 +44,7 @@ Recommend books directly to friends, share reviews, and follow the reading journ
 
 ### 1. Clone & Setup
 ```bash
-git clone https://github.com/USER_OR_ORG/Omnireads.git
+git clone https://github.com/diarraaaa/Omnireads.git
 cd Omnireads
 ```
 
