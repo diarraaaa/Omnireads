@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.git
+.gitignore
+db.sqlite3
+static_root/
+media_root/
+django_debug.log
+drf_exceptions.log
+group_messages_error.log

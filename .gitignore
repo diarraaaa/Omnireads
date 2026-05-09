@@ -27,3 +27,7 @@ omni-frontend/yarn-error.log*
 .vscode/
 *.swp
 *.bak
+
+# Data
+*.csv
+omni-frontend/src/*.csv
