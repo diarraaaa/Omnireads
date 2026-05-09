@@ -58,6 +58,7 @@ CORS_ALLOW_HEADERS = [
 ]
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "https://omnireads.netlify.app",
 ]
 
 if os.getenv("DB_HOST"):
