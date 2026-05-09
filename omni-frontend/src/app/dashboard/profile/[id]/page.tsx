@@ -3,6 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { motion } from "framer-motion";
 import { 
+  Star, 
   User, 
   Book as BookIcon, 
   Loader2, 
@@ -42,6 +43,7 @@ interface LibraryItem {
     cover_url?: string;
   };
   status: string;
+  user_rating?: number | null;
   created_at?: string;
 }
 
@@ -260,6 +262,16 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                       <div>
                         <h4 className="font-serif font-bold text-sm text-foreground line-clamp-1 group-hover:text-accent-gold transition-colors">{item.book.title}</h4>
                         <p className="text-xs text-foreground/40 italic font-serif truncate mt-0.5">by {item.book.author}</p>
+                        
+                        {item.user_rating ? (
+                          <div className="flex items-center gap-0.5 mt-2">
+                             {[...Array(5)].map((_, i) => (
+                                <Star key={i} className={`w-2.5 h-2.5 ${i < item.user_rating! ? "text-accent-gold fill-accent-gold" : "text-foreground/10"}`} />
+                             ))}
+                          </div>
+                        ) : (
+                          <div className="h-5 mt-2" /> // Maintain spacing
+                        )}
                       </div>
                       
                       <div className="mt-4 flex items-center justify-between">

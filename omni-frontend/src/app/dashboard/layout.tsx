@@ -48,15 +48,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [pathname, mutateUnread]);
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+    const fetchUser = async () => {
+      const user = await api.getUser();
+      if (!user && !supabase) {
+        // This case should theoretically not happen with api.getUser fallback
+        setUser({ email: "dev@omnireads.local", id: "00000000-0000-0000-0000-000000000000" });
+      } else if (!user) {
         router.push("/auth/signin");
       } else {
         setUser(user);
       }
     };
-    getUser();
+    fetchUser();
   }, [router, supabase]);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -181,7 +184,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
             <button 
               onClick={async () => {
-                await supabase.auth.signOut();
+                if (supabase) {
+                  await supabase.auth.signOut();
+                }
                 router.push("/");
               }}
               className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-foreground/40 hover:text-red-400 hover:bg-red-500/5 transition-all duration-300 group"
@@ -195,8 +200,29 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Main Content */}
       <main className={`lg:ml-72 min-h-screen transition-all duration-500`}>
+        {/* Dev Mode Banner - Only show if ACTUALLY using zero-config (mock user) */}
+        {profile?.is_dev_mode && user?.isMock && (
+          <div className="bg-accent-gold/90 backdrop-blur-md text-background px-10 py-2.5 flex items-center justify-between z-[100] sticky top-0 border-b border-background/10">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-background/20 rounded-lg">
+                <Settings className="w-4 h-4 text-background animate-spin-slow" />
+              </div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.1em] font-serif">
+                <span className="opacity-70">Running in</span> Zero-Config Developer Mode
+              </p>
+            </div>
+            <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest opacity-60">
+              <span>Local SQLite</span>
+              <span className="w-1 h-1 bg-background/30 rounded-full" />
+              <span>Mock Auth</span>
+              <span className="w-1 h-1 bg-background/30 rounded-full" />
+              <span>No Cloud Dependencies</span>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
-        <header className="sticky top-0 w-full h-24 bg-background/60 backdrop-blur-2xl border-b border-foreground/5 z-30 px-10 flex items-center justify-between">
+        <header className={`sticky ${profile?.is_dev_mode && user?.isMock ? 'top-[45px]' : 'top-0'} w-full h-24 bg-background/60 backdrop-blur-2xl border-b border-foreground/5 z-30 px-10 flex items-center justify-between transition-all`}>
           <button 
             onClick={() => setSidebarOpen(true)}
             className="p-2 lg:hidden text-foreground/60 hover:text-foreground"
@@ -217,8 +243,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
-              <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em]">Omnireads Live</span>
+              {user?.isMock ? (
+                <div className="flex items-center gap-2 px-3 py-1 bg-accent-gold/10 border border-accent-gold/20 rounded-full">
+                  <div className="w-2 h-2 rounded-full bg-accent-gold animate-pulse" />
+                  <span className="text-[10px] font-bold text-accent-gold uppercase tracking-[0.2em]">Zero-Config Dev Mode</span>
+                </div>
+              ) : null}
             </div>
             
             <div className="flex items-center gap-4 border-l border-foreground/5 pl-6">

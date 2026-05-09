@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from .models import (
-    Book, Rating, Friendship, DirectRecommendation, Profile, LibraryItem, 
+    Profile, Book, LibraryItem, Rating, Friendship, DirectRecommendation,
     ReadingGroup, ReadingGroupMembership, ReadingGroupBook, Message,
-    GroupMessage, GroupPoll, GroupPollOption, GroupPollVote
+    GroupMessage, GroupPoll, GroupPollOption, GroupPollVote,
+    Review, ReviewComment, ReviewVote
 )
 
 
@@ -26,9 +27,15 @@ class BookSerializer(serializers.ModelSerializer):
 
 class LibraryItemSerializer(serializers.ModelSerializer):
     book = BookSerializer(read_only=True)
+    user_rating = serializers.SerializerMethodField()
+
     class Meta:
         model = LibraryItem
-        fields = "__all__"
+        fields = ["id", "user_id", "book", "status", "created_at", "user_rating"]
+
+    def get_user_rating(self, obj):
+        rating = Rating.objects.filter(user_id=obj.user_id, book_id=obj.book_id).first()
+        return rating.score if rating else None
 
 
 class RatingSerializer(serializers.ModelSerializer):
@@ -141,3 +148,31 @@ class GroupPollVoteSerializer(serializers.ModelSerializer):
         model = GroupPollVote
         fields = ["id", "poll", "option", "user"]
         read_only_fields = ["id", "user"]
+
+
+class ReviewCommentSerializer(serializers.ModelSerializer):
+    user = ProfileSerializer(read_only=True)
+
+    class Meta:
+        model = ReviewComment
+        fields = ["id", "review", "user", "content", "created_at"]
+        read_only_fields = ["id", "user", "created_at"]
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    user = ProfileSerializer(read_only=True)
+    comments = ReviewCommentSerializer(many=True, read_only=True)
+    likes_count = serializers.IntegerField(read_only=True)
+    dislikes_count = serializers.IntegerField(read_only=True)
+    user_vote = serializers.IntegerField(read_only=True)  # 1, -1, or 0
+    rating_score = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Review
+        fields = ["id", "user", "book", "content", "rating", "rating_score", "comments", "likes_count", "dislikes_count", "user_vote", "created_at"]
+        read_only_fields = ["id", "user", "created_at"]
+
+    def get_rating_score(self, obj):
+        if obj.rating:
+            return obj.rating.score
+        return None

@@ -54,8 +54,16 @@ cd omni-backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# Option A: Zero-Config (SQLite & Mock Auth)
+# Just copy the example env - no external services needed!
+cp .env.example .env 
 python manage.py migrate
+python manage.py seed_data
 python manage.py runserver
+
+# Option B: Full Setup (Supabase & Postgres)
+# Edit .env with your real credentials before migrating
 ```
 
 ### 3. Launch Frontend
@@ -64,6 +72,37 @@ cd omni-frontend
 npm install
 npm run dev
 ```
+
+---
+
+## ⚙️ Development Modes
+
+OmniReads supports two primary modes of operation to facilitate both seamless contribution and secure production-like testing.
+
+### 🛠️ Zero-Config Dev Mode (Recommended)
+This is the default mode when no external credentials are provided. It allows contributors to start developing immediately.
+- **Database**: Uses local **SQLite** (`db.sqlite3`).
+- **Authentication**: Uses **Mock Auth** (bypasses Supabase login).
+- **Trigger**: Active when `DB_HOST` is missing or `ALLOW_MOCK_AUTH=True`.
+- **Badge**: A "Zero-Config Dev Mode" indicator will appear in the dashboard header.
+
+**To start in Dev Mode:**
+1. `cp .env.example .env`
+2. `python manage.py migrate`
+3. `python manage.py seed_data` (Creates a local catalog and a developer profile)
+
+### 🌍 Live Mode
+Use this mode to test against a real Supabase environment and PostgreSQL database.
+- **Database**: Connects to **PostgreSQL** (via Supabase or local instance).
+- **Authentication**: Uses real **Supabase JWT** validation.
+- **Trigger**: Requires valid `DB_HOST` and `ALLOW_MOCK_AUTH=False`.
+
+**To start in Live Mode:**
+1. Fill in your real credentials in `.env`.
+2. Ensure `ALLOW_MOCK_AUTH=False`.
+3. The "Dev Mode" badge will disappear, and you will need a real Supabase token to access the API.
+
+---
 
 ---
 

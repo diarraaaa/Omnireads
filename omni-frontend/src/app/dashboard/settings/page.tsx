@@ -26,12 +26,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await api.getUser();
       setUser(user);
       setLoading(false);
     };
     fetchUser();
-  }, [supabase.auth]);
+  }, []);
 
   useEffect(() => {
     if (profile) {
@@ -63,6 +63,11 @@ export default function SettingsPage() {
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+
+    if (!supabase) {
+      addToast({ title: "Dev Mode Limitation", description: "Avatar uploads require Supabase Storage. This feature is disabled in Zero-Config mode.", type: "error" });
+      return;
+    }
 
     if (!file.type.startsWith('image/')) {
       addToast({ title: "Invalid File", description: "Please select an image file.", type: "error" });
@@ -116,6 +121,12 @@ export default function SettingsPage() {
 
   const handlePasswordReset = async () => {
     if (!user?.email) return;
+    
+    if (!supabase) {
+      addToast({ title: "Dev Mode Limitation", description: "Password resets require Supabase Auth. This feature is disabled in Zero-Config mode.", type: "error" });
+      return;
+    }
+    
     setResetting(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(user.email, {

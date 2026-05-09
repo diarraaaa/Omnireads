@@ -11,6 +11,7 @@ interface Profile {
   full_name?: string;
   avatar_url?: string;
   bio?: string;
+  is_dev_mode?: boolean;
 }
 
 interface ProfileContextType {
@@ -28,7 +29,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await api.getUser();
       if (user) {
         const data = await api.get("/api/profile/");
         setProfile(data);
@@ -45,16 +46,20 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchProfile();
     
-    // Optional: listen for auth changes to re-fetch
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      fetchProfile();
-    });
-
-    return () => subscription.unsubscribe();
+    if (supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+        fetchProfile();
+      });
+      return () => subscription.unsubscribe();
+    }
   }, []);
 
   return (
-    <ProfileContext.Provider value={{ profile, loading, refreshProfile: fetchProfile }}>
+    <ProfileContext.Provider value={{ 
+      profile, 
+      loading, 
+      refreshProfile: fetchProfile,
+    }}>
       {children}
     </ProfileContext.Provider>
   );

@@ -11,7 +11,8 @@ from api.views import (
     ReadingGroupListView, ReadingGroupDetailView, ReadingGroupJoinView, ReadingGroupBookView,
     ReadingGroupMemberListView, ReadingGroupMemberDetailView,
     GroupMessageListView, GroupPollListView, GroupPollVoteView,
-    MessageListView, ConversationListView, MessageUnreadCountView
+    MessageListView, ConversationListView, MessageUnreadCountView,
+    ReviewListView, ReviewDetailView, ReviewCommentView, ReviewVoteView
 )
 
 urlpatterns = [
@@ -68,4 +69,10 @@ urlpatterns = [
 
     # AI recommendations (stub — returns [] until Phase 2)
     path("api/recommend/", AIRecommendView.as_view()),
+
+    # Reviews
+    path("api/reviews/", ReviewListView.as_view()),
+    path("api/reviews/<uuid:review_id>/", ReviewDetailView.as_view()),
+    path("api/reviews/<uuid:review_id>/comments/", ReviewCommentView.as_view()),
+    path("api/reviews/<uuid:review_id>/vote/", ReviewVoteView.as_view()),
 ]

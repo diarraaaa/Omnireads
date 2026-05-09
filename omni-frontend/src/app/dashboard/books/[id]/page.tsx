@@ -18,6 +18,7 @@ import {
 import { motion } from "framer-motion";
 import Link from "next/link";
 import RecommendationModal from "@/components/RecommendationModal";
+import BookReviews from "@/components/BookReviews";
 import { useToast } from "@/components/ui/Toast";
 
 interface Book {
@@ -76,8 +77,14 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
     try {
       await api.post("/api/ratings/", { book_id: id, score });
       setUserRating(score);
-    } catch (error) {
+      addToast({ title: "Your appraisal has been recorded.", type: "success" });
+    } catch (error: any) {
       console.error("Failed to rate book:", error);
+      addToast({ 
+        title: "Action Forbidden", 
+        description: error.message || "Ensure you have marked this volume as 'Completed'.", 
+        type: "error" 
+      });
     } finally {
       setRatingLoading(false);
     }
@@ -219,12 +226,7 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
             </p>
           </section>
 
-          {/* Social Actions stub */}
           <div className="flex flex-wrap gap-4 pt-6 border-t border-foreground/5">
-             <button className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold transition-all">
-               <MessageSquare className="w-5 h-5" />
-               Reviews
-             </button>
               <button 
                 onClick={() => setRecommendModalOpen(true)}
                 className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-foreground/5 hover:bg-foreground/10 text-foreground font-bold transition-all"
@@ -233,6 +235,10 @@ export default function BookDetailPage({ params }: { params: Promise<{ id: strin
                 Recommend to Colleague
               </button>
           </div>
+
+          <section className="pt-12">
+            <BookReviews bookId={id} bookTitle={book.title} />
+          </section>
 
           <RecommendationModal 
             isOpen={isRecommendModalOpen}

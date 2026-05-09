@@ -4,7 +4,10 @@ import base64
 from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
+import logging
 from jwt import PyJWKClient
+
+logger = logging.getLogger('api')
 
 
 class SupabaseUser:
@@ -45,12 +48,13 @@ class SupabaseAuthentication(BaseAuthentication):
                     signing_key.key,
                     algorithms=["ES256"],
                     audience="authenticated",
+                    leeway=60,
                 )
             else:
                 # Fallback to HS256/Secret
                 raw_secret = os.getenv("SUPABASE_JWT_SECRET")
                 if not raw_secret:
-                    print("Auth: SUPABASE_JWT_SECRET not set")
+                    logger.error("Auth: SUPABASE_JWT_SECRET not set")
                     return None
 
                 try:
@@ -64,6 +68,7 @@ class SupabaseAuthentication(BaseAuthentication):
                         secret,
                         algorithms=["HS256", "HS384", "HS512"],
                         audience="authenticated",
+                        leeway=60,
                     )
                 except jwt.InvalidTokenError:
                     # Try raw if base64 failed
@@ -73,6 +78,7 @@ class SupabaseAuthentication(BaseAuthentication):
                             raw_secret,
                             algorithms=["HS256", "HS384", "HS512"],
                             audience="authenticated",
+                            leeway=60,
                         )
                     else:
                         raise
@@ -82,7 +88,19 @@ class SupabaseAuthentication(BaseAuthentication):
         except jwt.ExpiredSignatureError:
             raise AuthenticationFailed("Token expired")
         except jwt.InvalidTokenError as e:
-            print(f"Auth: Invalid token: {e}")
+            # If we're in dev mode, maybe this is a mock token. Let other authenticators try.
+            if token == "mock-token" or token.count('.') < 2:
+                return None
+                
+            import time
+            current_time = time.time()
+            try:
+                header = jwt.get_unverified_header(token)
+                unverified_payload = jwt.decode(token, options={"verify_signature": False})
+                logger.warning(f"Auth: Invalid token: {e}. System time: {current_time}. Token iat: {unverified_payload.get('iat')}. Header: {header}")
+            except Exception:
+                logger.warning(f"Auth: Could not even decode token header: {e}")
+                
             raise AuthenticationFailed(f"Invalid token: {e}")
         except Exception as e:
             with open("auth_error.log", "a") as f:
@@ -90,5 +108,19 @@ class SupabaseAuthentication(BaseAuthentication):
                 f.write(f"Error: {str(e)}\n")
                 import traceback
                 f.write(traceback.format_exc())
-            print(f"Auth: Unexpected error: {e}")
+            logger.exception(f"Auth: Unexpected error: {e}")
             raise AuthenticationFailed(f"Auth error: {e}")
+
+
+class MockAuthentication(BaseAuthentication):
+    """Bypass authentication for local development when Supabase is not configured."""
+    def authenticate(self, request):
+        # Only allow mock auth if explicitly enabled in settings/env and in DEBUG mode
+        if os.getenv("DEBUG") != "True" or os.getenv("ALLOW_MOCK_AUTH") != "True":
+            return None
+            
+        mock_payload = {
+            "sub": "00000000-0000-0000-0000-000000000000",
+            "email": "dev@omnireads.local"
+        }
+        return (SupabaseUser(mock_payload), "mock-token")

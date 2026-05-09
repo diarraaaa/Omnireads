@@ -13,6 +13,8 @@ interface Book {
   cover_url: string;
   isbn: string;
   description: string;
+  library_status?: string;
+  user_rating?: number | null;
 }
 
 export default function DashboardPage() {
@@ -33,7 +35,8 @@ export default function DashboardPage() {
         // Map LibraryItem[] to Book[] for display
         const libraryBooks = libraryData.map((item: any) => ({
           ...item.book,
-          library_status: item.status
+          library_status: item.status,
+          user_rating: item.user_rating
         }));
         setBooks(libraryBooks);
         setRecommendations(recsData);
@@ -175,11 +178,15 @@ export default function DashboardPage() {
                   {book.title}
                 </h3>
                 <p className="text-foreground/40 text-sm font-serif italic">by {book.author}</p>
-                <div className="flex items-center gap-1 pt-2">
-                   {[...Array(5)].map((_, i) => (
-                      <Star key={i} className={`w-3 h-3 ${i < 4 ? "text-accent-gold fill-accent-gold" : "text-foreground/10"}`} />
-                   ))}
-                </div>
+                {book.user_rating ? (
+                  <div className="flex items-center gap-1 pt-2">
+                     {[...Array(5)].map((_, i) => (
+                        <Star key={i} className={`w-3 h-3 ${i < book.user_rating! ? "text-accent-gold fill-accent-gold" : "text-foreground/10"}`} />
+                     ))}
+                  </div>
+                ) : (
+                  <div className="pt-2 h-5" /> // Maintain spacing
+                )}
               </div>
             </motion.div>
           ))}

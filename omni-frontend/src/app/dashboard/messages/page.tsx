@@ -151,6 +151,11 @@ function MessagesContent() {
       let fileData = {};
       if (selectedFile) {
         const supabase = api.getSupabase();
+        if (!supabase) {
+          addToast({ title: "Dev Mode Limitation", description: "File attachments require Supabase Storage. This feature is disabled in Zero-Config mode.", type: "error" });
+          setSending(false);
+          return;
+        }
         const fileExt = selectedFile.name.split('.').pop();
         const fileName = `${Math.random()}.${fileExt}`;
         const filePath = `messages/${fileName}`;

@@ -101,7 +101,48 @@ alter table public.ratings enable row level security;
 alter table public.friendships enable row level security;
 alter table public.recommendations enable row level security;
 
--- 8. Policies
+-- 9. Reviews
+create table public.reviews (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  book_id uuid references public.books(id) on delete cascade not null,
+  content text not null,
+  rating_id uuid references public.ratings(id) on delete set null,
+  created_at timestamp with time zone default now()
+);
+
+create table public.review_comments (
+  id uuid default gen_random_uuid() primary key,
+  review_id uuid references public.reviews(id) on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  content text not null,
+  created_at timestamp with time zone default now()
+);
+
+create table public.review_votes (
+  id uuid default gen_random_uuid() primary key,
+  review_id uuid references public.reviews(id) on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  vote_type integer check (vote_type in (1, -1)) not null,
+  created_at timestamp with time zone default now(),
+  unique(review_id, user_id)
+);
+
+alter table public.reviews enable row level security;
+alter table public.review_comments enable row level security;
+alter table public.review_votes enable row level security;
+
+-- 10. Review Policies
+create policy "Reviews are public" on public.reviews for select using (true);
+create policy "Users manage own reviews" on public.reviews for all using (auth.uid() = user_id);
+
+create policy "Review comments are public" on public.review_comments for select using (true);
+create policy "Users manage own comments" on public.review_comments for all using (auth.uid() = user_id);
+
+create policy "Review votes are public" on public.review_votes for select using (true);
+create policy "Users manage own votes" on public.review_votes for all using (auth.uid() = user_id);
+
+-- 11. Policies
 create policy "Profiles are public" on public.profiles for select using (true);
 create policy "Users update own profile" on public.profiles for update using (auth.uid() = id);
 

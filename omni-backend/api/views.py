@@ -1,20 +1,22 @@
 import uuid
-from django.utils import timezone
-from django.db import models
-from django.db.models import Q
+from django.utils import timezone # type: ignore
+from django.db import models # type: ignore
+from django.db.models import Q # type: ignore
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import (
-    Book, Rating, Friendship, DirectRecommendation, Profile, LibraryItem, 
+    Profile, Book, LibraryItem, Rating, Friendship, DirectRecommendation,
     ReadingGroup, ReadingGroupMembership, ReadingGroupBook, Message,
-    GroupMessage, GroupPoll, GroupPollOption, GroupPollVote
+    GroupMessage, GroupPoll, GroupPollOption, GroupPollVote,
+    Review, ReviewComment, ReviewVote
 )
 from .serializers import (
-    BookSerializer, RatingSerializer, FriendshipSerializer,
-    DirectRecommendationSerializer, ProfileSerializer, LibraryItemSerializer,
+    ProfileSerializer, MessageSerializer, BookSerializer, LibraryItemSerializer,
+    RatingSerializer, FriendshipSerializer, DirectRecommendationSerializer,
     ReadingGroupSerializer, ReadingGroupMembershipSerializer, ReadingGroupBookSerializer,
-    MessageSerializer, GroupMessageSerializer, GroupPollSerializer, GroupPollVoteSerializer
+    GroupMessageSerializer, GroupPollSerializer, GroupPollVoteSerializer,
+    ReviewSerializer, ReviewCommentSerializer
 )
 from .recommender import get_recommendations
 
@@ -22,7 +24,7 @@ from .recommender import get_recommendations
 # ─── Profile ──────────────────────────────────────────────────────────────────
 
 from rest_framework.views import exception_handler
-from django.utils import timezone
+from django.utils import timezone # type: ignore
 import traceback
 
 def custom_exception_handler(exc, context):
@@ -31,7 +33,7 @@ def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
 
     # Now add the HTTP status code to the response.
-    if response is not None:
+    if response is not None and isinstance(response.data, dict):
         response.data['status_code'] = response.status_code
     
     # Log the exception
@@ -48,70 +50,79 @@ class MyProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            profile = Profile.objects.get(id=request.user.id)
-            data = ProfileSerializer(profile).data
-            
-            # Real stats
-            data["stats"] = {
-                "average_rating": Rating.objects.filter(user_id=request.user.id).aggregate(models.Avg("score"))["score__avg"] or 0.0,
-                "books_count": LibraryItem.objects.filter(user_id=request.user.id).count(),
-                "friends_count": Friendship.objects.filter(
-                    (models.Q(initiator_id=request.user.id) | models.Q(receiver_id=request.user.id)),
-                    status="accepted"
-                ).count()
-            }
-            return Response(data)
-        except Profile.DoesNotExist:
+        profile = Profile.objects.filter(id=request.user.id).first()
+        if not profile:
             return Response({"error": "Profile not found"}, status=404)
+            
+        data = ProfileSerializer(profile).data
+        
+        # Real stats
+        data["stats"] = {
+            "average_rating": Rating.objects.filter(user_id=request.user.id).aggregate(models.Avg("score"))["score__avg"] or 0.0,
+            "books_count": LibraryItem.objects.filter(user_id=request.user.id).count(),
+            "friends_count": Friendship.objects.filter(
+                (Q(initiator_id=request.user.id) | Q(receiver_id=request.user.id)),
+                status="accepted"
+            ).count()
+        }
+        
+        from django.conf import settings # type: ignore
+        import os
+        # Match logic in settings.py: dev mode if ALLOW_MOCK_AUTH is True OR if Supabase secret is missing
+        data["is_dev_mode"] = settings.DEBUG and (
+            os.getenv("ALLOW_MOCK_AUTH") == "True" or 
+            not os.getenv("SUPABASE_JWT_SECRET")
+        )
+        
+        return Response(data)
 
     def patch(self, request):
-        try:
-            profile = Profile.objects.get(id=request.user.id)
-            serializer = ProfileSerializer(profile, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            return Response(serializer.errors, status=400)
-        except Profile.DoesNotExist:
+        profile = Profile.objects.filter(id=request.user.id).first()
+        if not profile:
             return Response({"error": "Profile not found"}, status=404)
+
+        serializer = ProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
 
 
 class PublicProfileView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, user_id):
-        try:
-            profile = Profile.objects.get(id=user_id)
-            data = ProfileSerializer(profile).data
-            
-            # Real stats
-            data["friend_count"] = Friendship.objects.filter(
-                models.Q(initiator_id=user_id, status="accepted") | 
-                models.Q(receiver_id=user_id, status="accepted")
-            ).count()
-            data["book_count"] = LibraryItem.objects.filter(user_id=user_id).count()
-            
-            # Friendship status relative to requesting user
-            if request.user.is_authenticated and str(request.user.id) != str(user_id):
-                friendship = Friendship.objects.filter(
-                    models.Q(initiator_id=request.user.id, receiver_id=user_id) |
-                    models.Q(initiator_id=user_id, receiver_id=request.user.id)
-                ).first()
-                
-                status = 'none'
-                if friendship:
-                    if friendship.status == 'accepted':
-                        status = 'accepted'
-                    elif friendship.status == 'pending':
-                        status = 'sent' if friendship.initiator_id == request.user.id else 'received'
-                data["friendship_status"] = status
-            
-            data["is_self"] = request.user.is_authenticated and str(request.user.id) == str(user_id)
-            
-            return Response(data)
-        except Profile.DoesNotExist:
+        profile = Profile.objects.filter(id=user_id).first()
+        if not profile:
             return Response({"error": "Not found"}, status=404)
+            
+        data = ProfileSerializer(profile).data
+        
+        # Real stats
+        data["friend_count"] = Friendship.objects.filter(
+            Q(initiator_id=user_id, status="accepted") | 
+            Q(receiver_id=user_id, status="accepted")
+        ).count()
+        data["book_count"] = LibraryItem.objects.filter(user_id=user_id).count()
+        
+        # Friendship status relative to requesting user
+        if request.user.is_authenticated and str(request.user.id) != str(user_id):
+            friendship = Friendship.objects.filter(
+                Q(initiator_id=request.user.id, receiver_id=user_id) |
+                Q(initiator_id=user_id, receiver_id=request.user.id)
+            ).first()
+            
+            status = 'none'
+            if friendship:
+                if friendship.status == 'accepted':
+                    status = 'accepted'
+                elif friendship.status == 'pending':
+                    status = 'sent' if friendship.initiator_id == request.user.id else 'received'
+            data["friendship_status"] = status
+        
+        data["is_self"] = request.user.is_authenticated and str(request.user.id) == str(user_id)
+        
+        return Response(data)
 
 
 # ─── Books ────────────────────────────────────────────────────────────────────
@@ -132,16 +143,21 @@ class BookListView(APIView):
         if query:
             # Use Q objects for trigram-indexed search
             books = books.filter(
-                models.Q(title__icontains=query) | 
-                models.Q(author__icontains=query) | 
-                models.Q(description__icontains=query)
+                Q(title__icontains=query) | # type: ignore
+                Q(author__icontains=query) | 
+                Q(description__icontains=query)
             )
             
-        # Deduplicate by title and author (Postgres specific)
-        books = books.order_by("title", "author", "id").distinct("title", "author")
+        from django.db import connection # type: ignore
+        if connection.vendor == 'postgresql':
+            # Deduplicate by title and author (Postgres specific)
+            books = books.order_by("title", "author", "id").distinct("title", "author")
+        else:
+            # SQLite fallback: Global distinct or just order by (SQLite doesn't support distinct fields)
+            books = books.order_by("title", "author", "id")
         
         # Performance optimization: Cache the count for the full catalog or common searches
-        from django.core.cache import cache
+        from django.core.cache import cache # type: ignore
         cache_key = f"book_count_{genre}_{query}"
         total_count = cache.get(cache_key)
         
@@ -180,7 +196,7 @@ class GenreListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        from django.core.cache import cache
+        from django.core.cache import cache # type: ignore
         genres = cache.get('genre_list')
         if genres:
             return Response(genres)
@@ -255,11 +271,10 @@ class BookDetailView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, book_id):
-        try:
-            book = Book.objects.get(id=book_id)
-            return Response(BookSerializer(book).data)
-        except Book.DoesNotExist:
+        book = Book.objects.filter(id=book_id).first()
+        if not book:
             return Response({"error": "Not found"}, status=404)
+        return Response(BookSerializer(book).data)
 
 
 # ─── Ratings ──────────────────────────────────────────────────────────────────
@@ -274,20 +289,29 @@ class RatingView(APIView):
 
         if not book_id or score is None:
             return Response({"error": "book_id and score are required"}, status=400)
-        if not (1 <= int(score) <= 5):
-            return Response({"error": "score must be between 1 and 5"}, status=400)
-
+        
         try:
-            rating = Rating.objects.get(user_id=request.user.id, book_id=book_id)
-            rating.score = score
+            score_int = int(score)
+            if not (1 <= score_int <= 5):
+                return Response({"error": "score must be between 1 and 5"}, status=400)
+        except ValueError:
+            return Response({"error": "score must be an integer"}, status=400)
+
+        # CRITICAL: A book that is not marked 'completed' cannot have stars
+        if not LibraryItem.objects.filter(user_id=request.user.id, book_id=book_id, status="completed").exists():
+            return Response({"error": "You must mark this book as 'Completed' before you can rate it."}, status=403)
+
+        rating = Rating.objects.filter(user_id=request.user.id, book_id=book_id).first()
+        if rating:
+            rating.score = score_int
             rating.save()
             created = False
-        except Rating.DoesNotExist:
+        else:
             rating = Rating.objects.create(
                 id=uuid.uuid4(),
                 user_id=request.user.id,
                 book_id=book_id,
-                score=score
+                score=score_int
             )
             created = True
         return Response(RatingSerializer(rating).data, status=201 if created else 200)
@@ -311,6 +335,109 @@ class MyRatingsView(APIView):
     def get(self, request):
         ratings = Rating.objects.filter(user_id=request.user.id).select_related("book")
         return Response(RatingSerializer(ratings, many=True).data)
+
+
+# ─── Reviews ──────────────────────────────────────────────────────────────────
+
+class ReviewListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        book_id = request.query_params.get("book_id")
+        if not book_id:
+            return Response({"error": "book_id is required"}, status=400)
+        
+        reviews = Review.objects.filter(book_id=book_id).order_by("-created_at")
+        
+        # Annotate with vote counts and user vote
+        from django.db.models import Count # type: ignore, Sum, Case, When, IntegerField
+        reviews = reviews.annotate(
+            likes_count=Count('votes', filter=Q(votes__vote_type=1)),
+            dislikes_count=Count('votes', filter=Q(votes__vote_type=-1))
+        )
+        
+        data = ReviewSerializer(reviews, many=True).data
+        
+        # Add user-specific vote info if authenticated
+        if request.user.is_authenticated:
+            user_votes = ReviewVote.objects.filter(user_id=request.user.id, review__book_id=book_id)
+            vote_map = {str(v.review_id): v.vote_type for v in user_votes}
+            for item in data:
+                item['user_vote'] = vote_map.get(item['id'], 0)
+                
+        return Response(data)
+
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=401)
+            
+        book_id = request.data.get("book_id")
+        content = request.data.get("content")
+        
+        if not book_id or not content:
+            return Response({"error": "book_id and content are required"}, status=400)
+            
+        # Optional: Link to existing rating
+        rating = Rating.objects.filter(user_id=request.user.id, book_id=book_id).first()
+        
+        review = Review.objects.create(
+            id=uuid.uuid4(),
+            user_id=request.user.id,
+            book_id=book_id,
+            content=content,
+            rating=rating
+        )
+        
+        return Response(ReviewSerializer(review).data, status=201)
+
+
+class ReviewDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, review_id):
+        Review.objects.filter(id=review_id, user_id=request.user.id).delete()
+        return Response(status=204)
+
+
+class ReviewCommentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, review_id):
+        comments = ReviewComment.objects.filter(review_id=review_id).order_by("created_at")
+        return Response(ReviewCommentSerializer(comments, many=True).data)
+
+    def post(self, request, review_id):
+        content = request.data.get("content")
+        if not content:
+            return Response({"error": "content is required"}, status=400)
+            
+        comment = ReviewComment.objects.create(
+            id=uuid.uuid4(),
+            review_id=review_id,
+            user_id=request.user.id,
+            content=content
+        )
+        return Response(ReviewCommentSerializer(comment).data, status=201)
+
+
+class ReviewVoteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, review_id):
+        vote_type = request.data.get("vote_type") # 1 or -1
+        if vote_type not in [1, -1, 0]:
+            return Response({"error": "vote_type must be 1 (like), -1 (dislike), or 0 (remove)"}, status=400)
+            
+        if vote_type == 0:
+            ReviewVote.objects.filter(review_id=review_id, user_id=request.user.id).delete()
+            return Response(status=204)
+            
+        vote, created = ReviewVote.objects.update_or_create(
+            review_id=review_id,
+            user_id=request.user.id,
+            defaults={"vote_type": vote_type}
+        )
+        return Response({"status": "voted", "vote_type": vote_type})
 
 
 # ─── Friendships ──────────────────────────────────────────────────────────────
@@ -348,21 +475,32 @@ class TrendingBooksView(APIView):
 class RandomBookView(APIView):
     permission_classes = [AllowAny]
     def get(self, request):
-        # Optimized: Use TABLESAMPLE for near-instant random row on large tables
-        from django.db import connection
-        with connection.cursor() as cursor:
-            # We use a fallback if TABLESAMPLE returns nothing (rare but possible on small samples)
-            cursor.execute("SELECT id FROM books TABLESAMPLE SYSTEM (1) LIMIT 1")
-            row = cursor.fetchone()
-            if not row:
-                # Fallback for very small tables or empty samples
-                cursor.execute("SELECT id FROM books ORDER BY RANDOM() LIMIT 1")
+        from django.db import connection # type: ignore
+        
+        # Use a database-specific random selection method
+        if connection.vendor == 'postgresql':
+            # Optimized for Postgres: Use TABLESAMPLE for near-instant random row on large tables
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id FROM books TABLESAMPLE SYSTEM (1) LIMIT 1")
                 row = cursor.fetchone()
-                
-        if not row:
-            return Response({"detail": "No books found"}, status=404)
+                if not row:
+                    # Fallback for very small tables or empty samples
+                    cursor.execute("SELECT id FROM books ORDER BY RANDOM() LIMIT 1")
+                    row = cursor.fetchone()
             
-        book = Book.objects.get(id=row[0])
+            if not row:
+                return Response({"detail": "No books found"}, status=404)
+            book_id = row[0]
+        else:
+            # Fallback for SQLite/others: Standard Django random order (efficient enough for local dev)
+            book = Book.objects.order_by('?').first()
+            if not book:
+                return Response({"detail": "No books found"}, status=404)
+            book_id = book.id
+
+        book = Book.objects.filter(id=book_id).first()
+        if not book:
+            return Response({"detail": "Book not found"}, status=404)
         return Response(BookSerializer(book).data)
 
 
@@ -379,8 +517,8 @@ class FriendRequestView(APIView):
 
         # Check if friendship exists in either direction
         existing = Friendship.objects.filter(
-            models.Q(initiator_id=request.user.id, receiver_id=receiver_id) |
-            models.Q(initiator_id=receiver_id, receiver_id=request.user.id)
+            Q(initiator_id=request.user.id, receiver_id=receiver_id) |
+            Q(initiator_id=receiver_id, receiver_id=request.user.id)
         ).first()
 
         if existing:
@@ -410,26 +548,24 @@ class FriendAcceptView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, friendship_id):
-        try:
-            friendship = Friendship.objects.get(id=friendship_id, receiver=request.user.id)
-            friendship.status = "accepted"
-            friendship.save()
-            return Response(FriendshipSerializer(friendship).data)
-        except Friendship.DoesNotExist:
+        friendship = Friendship.objects.filter(id=friendship_id, receiver=request.user.id).first()
+        if not friendship:
             return Response({"error": "Not found"}, status=404)
+        friendship.status = "accepted"
+        friendship.save()
+        return Response(FriendshipSerializer(friendship).data)
 
 
 class FriendRejectView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, friendship_id):
-        try:
-            friendship = Friendship.objects.get(id=friendship_id, receiver=request.user.id)
-            friendship.status = "rejected"
-            friendship.save()
-            return Response(status=204)
-        except Friendship.DoesNotExist:
+        friendship = Friendship.objects.filter(id=friendship_id, receiver=request.user.id).first()
+        if not friendship:
             return Response({"error": "Not found"}, status=404)
+        friendship.status = "rejected"
+        friendship.save()
+        return Response(status=204)
 
 
 # ─── Direct Recommendations ───────────────────────────────────────────────────
@@ -455,13 +591,14 @@ class SendRecommendationView(APIView):
 
         # Create a special message in the chat
         try:
-            book = Book.objects.get(id=book_id)
-            Message.objects.create(
-                id=uuid.uuid4(),
-                sender_id=request.user.id,
-                receiver_id=to_user_id,
-                content=f"[BOOK_RECOMMENDATION]:{book_id}:{book.title}:{message}"
-            )
+            book = Book.objects.filter(id=book_id).first()
+            if book:
+                Message.objects.create(
+                    id=uuid.uuid4(),
+                    sender_id=request.user.id,
+                    receiver_id=to_user_id,
+                    content=f"[BOOK_RECOMMENDATION]:{book_id}:{book.title}:{message}"
+                )
         except Exception as e:
             print(f"Failed to create recommendation message: {e}")
 
@@ -502,16 +639,16 @@ class UserSearchView(APIView):
         
         user_id = request.user.id
         profiles = Profile.objects.filter(
-            models.Q(username__icontains=query) | 
-            models.Q(name__icontains=query) |
-            models.Q(full_name__icontains=query)
+            Q(username__icontains=query) | # type: ignore
+            Q(name__icontains=query) |
+            Q(full_name__icontains=query)
         ).exclude(id=user_id)[:10]
         
         # Get all relevant friendships at once
         friendship_info = {}
         relevant_friendships = Friendship.objects.filter(
-            models.Q(initiator=user_id, receiver__id__in=profiles.values_list("id", flat=True)) |
-            models.Q(receiver=user_id, initiator__id__in=profiles.values_list("id", flat=True))
+            Q(initiator=user_id, receiver__id__in=profiles.values_list("id", flat=True)) | # type: ignore
+            Q(receiver=user_id, initiator__id__in=profiles.values_list("id", flat=True))
         )
         
         for f in relevant_friendships:
@@ -543,7 +680,7 @@ class DiscoveryView(APIView):
         
         # Exclude friends and current user
         friendships = Friendship.objects.filter(
-            models.Q(initiator=user_id) | models.Q(receiver=user_id)
+            Q(initiator=user_id) | Q(receiver=user_id)
         )
         friend_ids = set()
         for f in friendships:
@@ -617,7 +754,7 @@ class ReadingGroupListView(APIView):
         else:
             # Public groups or groups I'm in
             group_ids = ReadingGroupMembership.objects.filter(profile_id=request.user.id).values_list("group_id", flat=True)
-            groups = groups.filter(models.Q(is_public=True) | models.Q(id__in=group_ids))
+            groups = groups.filter(Q(is_public=True) | Q(id__in=group_ids))
 
         # Annotate with member count
         groups = groups.annotate(
@@ -660,45 +797,44 @@ class ReadingGroupDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, group_id):
-        try:
-            group = ReadingGroup.objects.get(id=group_id)
-            
-            # Check privacy
-            is_member = ReadingGroupMembership.objects.filter(group=group, profile_id=request.user.id).exists()
-            if not group.is_public and not is_member:
-                return Response({"error": "This is a private sanctum."}, status=403)
-            
-            # Fetch members and books
-            members = ReadingGroupMembership.objects.filter(group=group).select_related("profile")
-            books = ReadingGroupBook.objects.filter(group=group).select_related("book", "added_by")
-            
-            data = ReadingGroupSerializer(group).data
-            data["member_count"] = members.count()
-            data["is_member"] = is_member
-            
-            # Identify the user's role if they are a member
-            my_membership = members.filter(profile_id=request.user.id).first()
-            data["role"] = my_membership.role if my_membership else None
-            
-            data["members"] = ReadingGroupMembershipSerializer(members, many=True).data
-            data["books"] = ReadingGroupBookSerializer(books, many=True).data
-            
-            return Response(data)
-        except ReadingGroup.DoesNotExist:
+        group = ReadingGroup.objects.filter(id=group_id).first()
+        if not group:
             return Response({"error": "Group not found"}, status=404)
+            
+        # Check privacy
+        is_member = ReadingGroupMembership.objects.filter(group=group, profile_id=request.user.id).exists()
+        if not group.is_public and not is_member:
+            return Response({"error": "This is a private sanctum."}, status=403)
+        
+        # Fetch members and books
+        members = ReadingGroupMembership.objects.filter(group=group).select_related("profile")
+        books = ReadingGroupBook.objects.filter(group=group).select_related("book", "added_by")
+        
+        data = ReadingGroupSerializer(group).data
+        data["member_count"] = members.count()
+        data["is_member"] = is_member
+        
+        # Identify the user's role if they are a member
+        my_membership = members.filter(profile_id=request.user.id).first()
+        data["role"] = my_membership.role if my_membership else None
+        
+        data["members"] = ReadingGroupMembershipSerializer(members, many=True).data
+        data["books"] = ReadingGroupBookSerializer(books, many=True).data
+        
+        return Response(data)
 
     def delete(self, request, group_id):
         """Delete the group (Creator only)."""
-        try:
-            group = ReadingGroup.objects.get(id=group_id)
-            # Only the creator can delete the group
-            if str(group.creator_id) != str(request.user.id):
-                return Response({"error": "Only the creator can dissolve the group."}, status=403)
-            
-            group.delete()
-            return Response({"message": "Group dissolved successfully."}, status=204)
-        except ReadingGroup.DoesNotExist:
+        group = ReadingGroup.objects.filter(id=group_id).first()
+        if not group:
             return Response({"error": "Group not found"}, status=404)
+            
+        # Only the creator can delete the group
+        if str(group.creator_id) != str(request.user.id):
+            return Response({"error": "Only the creator can dissolve the group."}, status=403)
+        
+        group.delete()
+        return Response({"message": "Group dissolved successfully."}, status=204)
 
 
 class ReadingGroupJoinView(APIView):
@@ -706,23 +842,23 @@ class ReadingGroupJoinView(APIView):
 
     def post(self, request, group_id):
         """Join a group."""
-        try:
-            group = ReadingGroup.objects.get(id=group_id)
-            if not group.is_public:
-                return Response({"error": "Private groups require an invitation."}, status=403)
-            
-            membership, created = ReadingGroupMembership.objects.get_or_create(
-                group=group,
-                profile_id=request.user.id,
-                defaults={"id": uuid.uuid4(), "role": "member"}
-            )
-            
-            if not created:
-                return Response({"message": "Already a member"}, status=200)
-                
-            return Response(ReadingGroupMembershipSerializer(membership).data, status=201)
-        except ReadingGroup.DoesNotExist:
+        group = ReadingGroup.objects.filter(id=group_id).first()
+        if not group:
             return Response({"error": "Group not found"}, status=404)
+            
+        if not group.is_public:
+            return Response({"error": "Private groups require an invitation."}, status=403)
+        
+        membership, created = ReadingGroupMembership.objects.get_or_create(
+            group=group,
+            profile_id=request.user.id,
+            defaults={"id": uuid.uuid4(), "role": "member"}
+        )
+        
+        if not created:
+            return Response({"message": "Already a member"}, status=200)
+            
+        return Response(ReadingGroupMembershipSerializer(membership).data, status=201)
 
     def delete(self, request, group_id):
         """Leave a group."""
@@ -749,17 +885,17 @@ class ReadingGroupMemberListView(APIView):
 
     def get(self, request, group_id):
         """List all members of a group."""
-        try:
-            group = ReadingGroup.objects.get(id=group_id)
-            # Check privacy: if private, must be a member to see the member list
-            is_member = ReadingGroupMembership.objects.filter(group=group, profile_id=request.user.id).exists()
-            if not group.is_public and not is_member:
-                return Response({"error": "Only members of this private group can see the participant list."}, status=403)
-                
-            memberships = ReadingGroupMembership.objects.filter(group=group).select_related("profile")
-            return Response(ReadingGroupMembershipSerializer(memberships, many=True).data)
-        except ReadingGroup.DoesNotExist:
+        group = ReadingGroup.objects.filter(id=group_id).first()
+        if not group:
             return Response({"error": "Group not found"}, status=404)
+            
+        # Check privacy: if private, must be a member to see the member list
+        is_member = ReadingGroupMembership.objects.filter(group=group, profile_id=request.user.id).exists()
+        if not group.is_public and not is_member:
+            return Response({"error": "Only members of this private group can see the participant list."}, status=403)
+            
+        memberships = ReadingGroupMembership.objects.filter(group=group).select_related("profile")
+        return Response(ReadingGroupMembershipSerializer(memberships, many=True).data)
 
     def post(self, request, group_id):
         """Add a friend to the group directly."""
@@ -767,29 +903,27 @@ class ReadingGroupMemberListView(APIView):
         if not target_user_id:
             return Response({"error": "user_id is required"}, status=400)
 
-        try:
-            group = ReadingGroup.objects.get(id=group_id)
-            # Check if requester is a member
-            requester_membership = ReadingGroupMembership.objects.filter(group=group, profile_id=request.user.id).first()
-            if not requester_membership:
-                return Response({"error": "Only members can add friends to the group."}, status=403)
-
-            # Check if target is already a member
-            if ReadingGroupMembership.objects.filter(group=group, profile_id=target_user_id).exists():
-                return Response({"error": "User is already a member of this group."}, status=400)
-
-            # Create membership
-            membership = ReadingGroupMembership.objects.create(
-                id=uuid.uuid4(),
-                group=group,
-                profile_id=target_user_id,
-                role="member"
-            )
-            return Response(ReadingGroupMembershipSerializer(membership).data, status=201)
-        except ReadingGroup.DoesNotExist:
+        group = ReadingGroup.objects.filter(id=group_id).first()
+        if not group:
             return Response({"error": "Group not found"}, status=404)
-        except Exception as e:
-            return Response({"error": str(e)}, status=400)
+
+        # Check if requester is a member
+        requester_membership = ReadingGroupMembership.objects.filter(group=group, profile_id=request.user.id).first()
+        if not requester_membership:
+            return Response({"error": "Only members can add friends to the group."}, status=403)
+
+        # Check if target is already a member
+        if ReadingGroupMembership.objects.filter(group=group, profile_id=target_user_id).exists():
+            return Response({"error": "User is already a member of this group."}, status=400)
+
+        # Create membership
+        membership = ReadingGroupMembership.objects.create(
+            id=uuid.uuid4(),
+            group=group,
+            profile_id=target_user_id,
+            role="member"
+        )
+        return Response(ReadingGroupMembershipSerializer(membership).data, status=201)
 
 
 class ReadingGroupMemberDetailView(APIView):
@@ -797,70 +931,73 @@ class ReadingGroupMemberDetailView(APIView):
 
     def delete(self, request, group_id, user_id):
         """Remove a member from the group (Admin only)."""
-        try:
-            group = ReadingGroup.objects.get(id=group_id)
-            requester = ReadingGroupMembership.objects.get(group=group, profile_id=request.user.id)
-            
-            if requester.role not in ["admin", "creator"]:
-                return Response({"error": "Only admins can remove members."}, status=403)
+        group = ReadingGroup.objects.filter(id=group_id).first()
+        if not group:
+            return Response({"error": "Group not found"}, status=404)
 
-            target = ReadingGroupMembership.objects.get(group=group, profile_id=user_id)
-            
-            if target.role == "creator":
-                return Response({"error": "The creator cannot be removed."}, status=403)
-            
-            if requester.role == "admin" and target.role == "admin":
-                # Maybe allow admins to remove each other? WhatsApp allows this.
-                # But let's check if they are the same person (they can leave via JoinView)
-                pass
+        requester = ReadingGroupMembership.objects.filter(group=group, profile_id=request.user.id).first()
+        if not requester:
+            return Response({"error": "You are not a member of this group."}, status=403)
+        
+        if requester.role not in ["admin", "creator"]:
+            return Response({"error": "Only admins can remove members."}, status=403)
 
-            target.delete()
-            return Response(status=204)
-        except (ReadingGroup.DoesNotExist, ReadingGroupMembership.DoesNotExist):
-            return Response({"error": "Not found"}, status=404)
+        target = ReadingGroupMembership.objects.filter(group=group, profile_id=user_id).first()
+        if not target:
+            return Response({"error": "Target user not found in group"}, status=404)
+        
+        if target.role == "creator":
+            return Response({"error": "The creator cannot be removed."}, status=403)
+
+        target.delete()
+        return Response(status=204)
 
     def patch(self, request, group_id, user_id):
         """Update member role (Admin only)."""
-        try:
-            group = ReadingGroup.objects.get(id=group_id)
-            requester = ReadingGroupMembership.objects.get(group=group, profile_id=request.user.id)
-            
-            if requester.role not in ["admin", "creator"]:
-                return Response({"error": "Only admins can manage roles."}, status=403)
+        group = ReadingGroup.objects.filter(id=group_id).first()
+        if not group:
+            return Response({"error": "Group not found"}, status=404)
 
-            target = ReadingGroupMembership.objects.get(group=group, profile_id=user_id)
-            new_role = request.data.get("role")
-            
-            if new_role not in ["admin", "member"]:
-                return Response({"error": "Invalid role. Use 'admin' or 'member'."}, status=400)
-            
-            if target.role == "creator" and new_role != "creator":
-                return Response({"error": "The creator's role cannot be changed directly. They must transfer ownership."}, status=403)
+        requester = ReadingGroupMembership.objects.filter(group=group, profile_id=request.user.id).first()
+        if not requester:
+            return Response({"error": "You are not a member of this group."}, status=403)
+        
+        if requester.role not in ["admin", "creator"]:
+            return Response({"error": "Only admins can manage roles."}, status=403)
 
-            if new_role == "creator":
-                if requester.role != "creator":
-                    return Response({"error": "Only the current creator can transfer ownership."}, status=403)
-                
-                # Transfer ownership
-                target.role = "creator"
-                target.save()
-                
-                # Demote self to admin
-                requester.role = "admin"
-                requester.save()
-                
-                # Update group creator_id as well
-                group.creator_id = target.profile_id
-                group.save()
-                
-                return Response(ReadingGroupMembershipSerializer(target).data)
+        target = ReadingGroupMembership.objects.filter(group=group, profile_id=user_id).first()
+        if not target:
+            return Response({"error": "Target user not found in group"}, status=404)
 
-            target.role = new_role
+        new_role = request.data.get("role")
+        if new_role not in ["admin", "member"]:
+            return Response({"error": "Invalid role. Use 'admin' or 'member'."}, status=400)
+        
+        if target.role == "creator" and new_role != "creator":
+            return Response({"error": "The creator's role cannot be changed directly. They must transfer ownership."}, status=403)
+
+        if new_role == "creator":
+            if requester.role != "creator":
+                return Response({"error": "Only the current creator can transfer ownership."}, status=403)
+            
+            # Transfer ownership
+            target.role = "creator"
             target.save()
             
+            # Demote self to admin
+            requester.role = "admin"
+            requester.save()
+            
+            # Update group creator_id as well
+            group.creator_id = target.profile_id
+            group.save()
+            
             return Response(ReadingGroupMembershipSerializer(target).data)
-        except (ReadingGroup.DoesNotExist, ReadingGroupMembership.DoesNotExist):
-            return Response({"error": "Not found"}, status=404)
+
+        target.role = new_role
+        target.save()
+        
+        return Response(ReadingGroupMembershipSerializer(target).data)
 
 
 class ReadingGroupBookView(APIView):
@@ -904,14 +1041,14 @@ class MessageListView(APIView):
         if not other_user_id:
             # Simplified fallback for old code, but we should use ConversationListView
             messages = Message.objects.filter(
-                models.Q(sender_id=request.user.id) | models.Q(receiver_id=request.user.id)
+                Q(sender_id=request.user.id) | Q(receiver_id=request.user.id)
             ).order_by("-created_at")[:100] # Limit to 100 for safety
             return Response(MessageSerializer(messages, many=True).data)
         
         # Get conversation with specific user
         messages = Message.objects.filter(
-            (models.Q(sender_id=request.user.id) & models.Q(receiver_id=other_user_id)) |
-            (models.Q(sender_id=other_user_id) & models.Q(receiver_id=request.user.id))
+            (Q(sender_id=request.user.id) & Q(receiver_id=other_user_id)) | # type: ignore
+            (Q(sender_id=other_user_id) & Q(receiver_id=request.user.id))
         ).order_by("created_at")
         
         # Mark received messages as read
@@ -1003,8 +1140,8 @@ class ConversationListView(APIView):
             if oid_str not in profiles: continue
             
             last_message = Message.objects.filter(
-                (models.Q(sender_id=user_id) & models.Q(receiver_id=oid)) |
-                (models.Q(sender_id=oid) & models.Q(receiver_id=user_id))
+                (Q(sender_id=user_id) & Q(receiver_id=oid)) | # type: ignore
+                (Q(sender_id=oid) & Q(receiver_id=user_id))
             ).order_by("-created_at").first()
             
             unread_count = Message.objects.filter(
@@ -1041,7 +1178,7 @@ class GroupMessageListView(APIView):
             membership.save()
             
             return Response(GroupMessageSerializer(messages, many=True).data)
-        except ReadingGroupMembership.DoesNotExist:
+        except ReadingGroupMembership.DoesNotExist: # type: ignore
             return Response({"error": "Only members can view the group chat."}, status=403)
         except Exception as e:
             with open("group_messages_error.log", "a") as f:

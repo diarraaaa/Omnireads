@@ -11,9 +11,10 @@ class Profile(models.Model):
     bio = models.TextField(null=True, blank=True)
     website = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "profiles"
 
 
@@ -26,9 +27,10 @@ class Book(models.Model):
     cover_url = models.TextField(null=True, blank=True)
     isbn = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "books"
 
 
@@ -38,9 +40,10 @@ class Rating(models.Model):
     book = models.ForeignKey(Book, on_delete=models.CASCADE, db_column="book_id")
     score = models.IntegerField()  # 1 to 5
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "ratings"
         unique_together = [("user_id", "book")]
 
@@ -51,9 +54,10 @@ class Friendship(models.Model):
     receiver = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="received_friendships", db_column="receiver_id")
     status = models.TextField(default="pending")  # pending | accepted | rejected
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "friendships"
         unique_together = [("initiator", "receiver")]
 
@@ -67,9 +71,10 @@ class DirectRecommendation(models.Model):
     message = models.TextField(null=True, blank=True)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "recommendations"
 
 class LibraryItem(models.Model):
@@ -78,9 +83,10 @@ class LibraryItem(models.Model):
     book = models.ForeignKey(Book, on_delete=models.CASCADE, db_column="book_id")
     status = models.TextField(default="plan_to_read") # reading | completed | plan_to_read
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "library"
         unique_together = [("user_id", "book")]
 
@@ -93,9 +99,10 @@ class ReadingGroup(models.Model):
     is_public = models.BooleanField(default=True)
     avatar_url = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "reading_groups"
 
 
@@ -106,9 +113,10 @@ class ReadingGroupMembership(models.Model):
     role = models.TextField(default="member")  # creator | admin | member
     joined_at = models.DateTimeField(auto_now_add=True)
     last_read_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "reading_group_memberships"
         unique_together = [("group", "profile")]
 
@@ -121,9 +129,10 @@ class ReadingGroupBook(models.Model):
     added_by = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, db_column="added_by_id")
     status = models.TextField(default="reading")  # reading | discussed | suggested
     added_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "reading_group_books"
         unique_together = [("group", "book")]
 
@@ -137,9 +146,10 @@ class Message(models.Model):
     file_name = models.TextField(null=True, blank=True)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "messages"
 
 
@@ -149,6 +159,7 @@ class GroupMessage(models.Model):
     sender = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column="sender_id")
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
         managed = False
@@ -162,9 +173,10 @@ class GroupPoll(models.Model):
     question = models.TextField()
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "group_polls"
 
 
@@ -172,9 +184,10 @@ class GroupPollOption(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     poll = models.ForeignKey(GroupPoll, on_delete=models.CASCADE, related_name="options", db_column="poll_id")
     text = models.TextField()
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "group_poll_options"
 
 
@@ -183,8 +196,50 @@ class GroupPollVote(models.Model):
     poll = models.ForeignKey(GroupPoll, on_delete=models.CASCADE, related_name="votes", db_column="poll_id")
     option = models.ForeignKey(GroupPollOption, on_delete=models.CASCADE, related_name="votes", db_column="option_id")
     user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column="user_id")
+    objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "group_poll_votes"
         unique_together = [("poll", "user")]
+
+
+class Review(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="reviews", db_column="user_id")
+    book = models.ForeignKey(Book, on_delete=models.CASCADE, related_name="reviews", db_column="book_id")
+    content = models.TextField()
+    rating = models.ForeignKey(Rating, on_delete=models.SET_NULL, null=True, blank=True, db_column="rating_id")
+    created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
+
+    class Meta:
+        managed = True
+        db_table = "reviews"
+
+
+class ReviewComment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="comments", db_column="review_id")
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column="user_id")
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
+
+    class Meta:
+        managed = True
+        db_table = "review_comments"
+
+
+class ReviewVote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="votes", db_column="review_id")
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column="user_id")
+    vote_type = models.IntegerField()  # 1 for like, -1 for dislike
+    created_at = models.DateTimeField(auto_now_add=True)
+    objects = models.Manager()
+
+    class Meta:
+        managed = True
+        db_table = "review_votes"
+        unique_together = [("review", "user")]

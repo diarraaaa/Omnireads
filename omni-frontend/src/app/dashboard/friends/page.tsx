@@ -44,7 +44,7 @@ export default function FriendsPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const { data: { user } } = await api.getSupabase().auth.getUser();
+        const user = await api.getUser();
         if (user) setCurrentUserId(user.id);
 
         const [friendsData, requestsData, suggestedData, recsData] = await Promise.all([

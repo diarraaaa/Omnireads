@@ -7,7 +7,13 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-fallback-key")
-DEBUG = os.getenv("DEBUG", "False") == "True"
+
+# DETERMINISTIC ZERO-CONFIG MODE
+# If Supabase is missing, force DEBUG and ALLOW_MOCK_AUTH to True for seamless local development
+HAS_SUPABASE = bool(os.getenv("SUPABASE_JWT_SECRET"))
+DEBUG = os.getenv("DEBUG", "True" if not HAS_SUPABASE else "False") == "True"
+os.environ.setdefault("ALLOW_MOCK_AUTH", "True" if not HAS_SUPABASE else "False")
+os.environ.setdefault("DEBUG", "True" if not HAS_SUPABASE else "False") # Sync back for other files using os.getenv
 
 ALLOWED_HOSTS = ["*"]
 
@@ -53,21 +59,33 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
 ]
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME"),
-        "USER": os.getenv("DB_USER"),
-        "PASSWORD": os.getenv("DB_PASSWORD"),
-        "HOST": os.getenv("DB_HOST"),
-        "PORT": os.getenv("DB_PORT"),
+if os.getenv("DB_HOST"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("DB_NAME"),
+            "USER": os.getenv("DB_USER"),
+            "PASSWORD": os.getenv("DB_PASSWORD"),
+            "HOST": os.getenv("DB_HOST"),
+            "PORT": os.getenv("DB_PORT"),
+        }
     }
-}
+else:
+    # Local Development Fallback
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+
+# Determine Authentication Classes
+AUTH_CLASSES = ["api.authentication.SupabaseAuthentication"]
+if DEBUG and (not os.getenv("SUPABASE_JWT_SECRET") or os.getenv("ALLOW_MOCK_AUTH") == "True"):
+    AUTH_CLASSES.append("api.authentication.MockAuthentication")
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "api.authentication.SupabaseAuthentication",
-    ),
+    "DEFAULT_AUTHENTICATION_CLASSES": AUTH_CLASSES,
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
     "EXCEPTION_HANDLER": "api.views.custom_exception_handler",
 }
@@ -114,6 +132,11 @@ LOGGING = {
             'propagate': True,
         },
         'api': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'django.server': {
             'handlers': ['file'],
             'level': 'DEBUG',
             'propagate': True,
