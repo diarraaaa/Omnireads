@@ -1,17 +1,27 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookOpen, Mail, Lock, UserPlus, LogIn } from "lucide-react";
 import { GithubIcon } from "@/components/icons/GithubIcon";
 
 export default function SignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignInForm />
+    </Suspense>
+  );
+}
+
+function SignInForm() {
   const supabase = createClient();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(() => searchParams.get("error") ?? "");
   const [loading, setLoading] = useState(false);
 
   const handleAuth = async (e: React.FormEvent) => {

@@ -162,7 +162,7 @@ class GroupMessage(models.Model):
     objects = models.Manager()
 
     class Meta:
-        managed = False
+        managed = True
         db_table = "group_messages"
 
 
