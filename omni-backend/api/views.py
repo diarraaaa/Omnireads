@@ -46,14 +46,39 @@ def custom_exception_handler(exc, context):
 
     return response
 
+def _provision_profile(user):
+    """Create the Profile row for a Supabase-authenticated user on their first request.
+
+    Supabase Auth (OAuth/email signup) creates the auth.users row directly, outside
+    of any Django view, so there's no request to hook into other than this one.
+    """
+    metadata = getattr(user, "user_metadata", {}) or {}
+    full_name = metadata.get("full_name") or metadata.get("name") or ""
+    username = metadata.get("user_name") or metadata.get("preferred_username")
+    if not username:
+        local_part = (user.email or "user").split("@")[0]
+        username = f"{local_part}_{str(user.id)[:4]}"
+
+    profile, _ = Profile.objects.get_or_create(
+        id=user.id,
+        defaults={
+            "name": full_name,
+            "full_name": full_name,
+            "username": username,
+            "avatar_url": metadata.get("avatar_url") or metadata.get("picture") or "",
+        },
+    )
+    return profile
+
+
 class MyProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         profile = Profile.objects.filter(id=request.user.id).first()
         if not profile:
-            return Response({"error": "Profile not found"}, status=404)
-            
+            profile = _provision_profile(request.user)
+
         data = ProfileSerializer(profile).data
         
         # Real stats

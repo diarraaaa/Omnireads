@@ -15,6 +15,7 @@ class SupabaseUser:
     def __init__(self, payload):
         self.id = payload.get("sub")        # Supabase user UUID
         self.email = payload.get("email", "")
+        self.user_metadata = payload.get("user_metadata", {}) or {}
         self.is_authenticated = True
 
     def __str__(self):
