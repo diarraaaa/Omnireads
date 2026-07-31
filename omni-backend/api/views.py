@@ -142,7 +142,7 @@ class PublicProfileView(APIView):
                 if friendship.status == 'accepted':
                     status = 'accepted'
                 elif friendship.status == 'pending':
-                    status = 'sent' if friendship.initiator_id == request.user.id else 'received'
+                    status = 'sent' if str(friendship.initiator_id) == str(request.user.id) else 'received'
             data["friendship_status"] = status
         
         data["is_self"] = request.user.is_authenticated and str(request.user.id) == str(user_id)
@@ -548,8 +548,23 @@ class FriendRequestView(APIView):
 
         if existing:
             if existing.status == 'accepted':
-                return Response({"error": "You are already colleagues"}, status=400)
-            return Response(FriendshipSerializer(existing).data, status=200)
+                return Response({"error": "You are already friends"}, status=400)
+
+            if existing.status == 'pending':
+                # They already sent you a request — sending one back accepts it,
+                # instead of silently no-oping and showing you as "pending" too.
+                if str(existing.receiver_id) == str(request.user.id):
+                    existing.status = 'accepted'
+                    existing.save()
+                return Response(FriendshipSerializer(existing).data, status=200)
+
+            # status == 'rejected' (declined request, or a since-removed friendship):
+            # let them try again instead of permanently blocking a reconnection.
+            existing.initiator_id = request.user.id
+            existing.receiver_id = receiver_id
+            existing.status = 'pending'
+            existing.save()
+            return Response(FriendshipSerializer(existing).data, status=201)
 
         friendship = Friendship.objects.create(
             id=uuid.uuid4(),
@@ -677,12 +692,12 @@ class UserSearchView(APIView):
         )
         
         for f in relevant_friendships:
-            other_id = f.receiver_id if f.initiator_id == user_id else f.initiator_id
+            other_id = f.receiver_id if str(f.initiator_id) == str(user_id) else f.initiator_id
             status = 'none'
             if f.status == 'accepted':
                 status = 'accepted'
             elif f.status == 'pending':
-                status = 'sent' if f.initiator_id == user_id else 'received'
+                status = 'sent' if str(f.initiator_id) == str(user_id) else 'received'
             
             friendship_info[str(other_id)] = {
                 'status': status,
@@ -703,10 +718,11 @@ class DiscoveryView(APIView):
     def get(self, request):
         user_id = request.user.id
         
-        # Exclude friends and current user
+        # Exclude friends and current user (but not people with a rejected/removed
+        # friendship — they should still show up so a reconnection is possible)
         friendships = Friendship.objects.filter(
             Q(initiator=user_id) | Q(receiver=user_id)
-        )
+        ).exclude(status='rejected')
         friend_ids = set()
         for f in friendships:
             friend_ids.add(f.initiator_id)
