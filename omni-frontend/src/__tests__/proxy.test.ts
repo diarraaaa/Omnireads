@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { middleware } from "../middleware";
+import { proxy } from "../proxy";
 
 type CookieOptions = {
   cookies: {
@@ -22,7 +22,7 @@ vi.mock("@supabase/ssr", () => ({
     createServerClientMock(url, key, options),
 }));
 
-describe("middleware", () => {
+describe("proxy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -36,7 +36,7 @@ describe("middleware", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
 
     const request = new NextRequest("http://localhost/dashboard");
-    const response = await middleware(request);
+    const response = await proxy(request);
 
     expect(createServerClientMock).not.toHaveBeenCalled();
     expect(getUserMock).not.toHaveBeenCalled();
@@ -48,7 +48,7 @@ describe("middleware", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key");
 
     const request = new NextRequest("http://localhost/dashboard");
-    const response = await middleware(request);
+    const response = await proxy(request);
 
     expect(createServerClientMock).toHaveBeenCalledWith(
       "https://example.supabase.co",
@@ -73,7 +73,7 @@ describe("middleware", () => {
     );
 
     const request = new NextRequest("http://localhost/dashboard");
-    const response = await middleware(request);
+    const response = await proxy(request);
 
     expect(response.cookies.get("sb-access-token")?.value).toBe(
       "refreshed-token"

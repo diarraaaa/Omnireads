@@ -1,22 +1,26 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
-  const supabaseResponse = NextResponse.next({ request });
-
+export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   // Zero-Config Dev Mode: no Supabase credentials, nothing to refresh.
   if (!url || !key) {
-    return supabaseResponse;
+    return NextResponse.next({ request });
   }
+
+  let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(url, key, {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        // Recreate the response from the request now carrying the refreshed
+        // cookies, so Server Components in this same request see the new
+        // session instead of the one captured before the refresh.
+        supabaseResponse = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
           supabaseResponse.cookies.set(name, value, options)
         );
